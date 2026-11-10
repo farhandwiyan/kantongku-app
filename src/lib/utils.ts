@@ -1,0 +1,14 @@
+import { ClassValue, clsx, twMerge } from "cn";
+import { Currency } from "lucide-react";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export function convertToIDR(value: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
