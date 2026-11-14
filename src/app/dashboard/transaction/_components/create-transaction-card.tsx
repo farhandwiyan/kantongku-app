@@ -143,7 +143,7 @@ export default function CreateTrasactionCard({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Food & Drink">Food & Drink</SelectItem>
-                      <SelectItem value="Trasnportation">
+                      <SelectItem value="Transportation">
                         Transportation
                       </SelectItem>
                       <SelectItem value="Entertaiment">Entertaiment</SelectItem>
