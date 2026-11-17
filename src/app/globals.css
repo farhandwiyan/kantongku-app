@@ -128,3 +128,69 @@
     @apply font-sans;
   }
 }
+
+@utility response-ai {
+  @apply flex flex-col flex-wrap;
+
+  p {
+    @apply w-full my-2 text-wrap;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply w-full my-2 text-wrap font-semibold;
+  }
+
+  h1 {
+    @apply text-3xl;
+  }
+
+  h2 {
+    @apply text-2xl;
+  }
+
+  h3 {
+    @apply text-xl;
+  }
+
+  h4 {
+    @apply text-base;
+  }
+
+  h5 {
+    @apply text-sm;
+  }
+
+  h6 {
+    @apply text-xs;
+  }
+
+  ul,
+  ol {
+    @apply w-full space-y-1 pl-5 my-2 text-wrap;
+  }
+
+  ul {
+    @apply list-disc;
+  }
+
+  ol {
+    @apply list-decimal;
+  }
+
+  li {
+    @apply text-wrap;
+
+    & > p {
+      @apply my-1;
+    }
+  }
+
+  pre {
+    @apply w-full text-wrap
+  }
+}

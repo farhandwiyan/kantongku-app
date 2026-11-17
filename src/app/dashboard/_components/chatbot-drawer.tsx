@@ -13,49 +13,92 @@ import {
 } from "@/components/ui/drawer";
 import { handleChat } from "@/features/transaction/ai/chat";
 import { cn } from "@/lib/utils";
-import { BotIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import { BotIcon, ChevronDownIcon, EllipsisIcon, XIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import ChatbotTextarea from "./chatbot-textarea";
+import { useMutation } from "@tanstack/react-query";
+import Markdown from "react-markdown";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { string } from "zod";
 
 export default function ChatBotDrawer() {
+  const chatRef = useRef<HTMLDivElement>(null);
+
   const [conversation, setConversation] = useState<
     {
       role: string;
       parts: {
         text: string;
+        thought?: boolean;
       }[];
     }[]
-  >([
-    {
+  >([]);
+
+  const [isThinking, setIsThinking] = useState<boolean>(false);
+
+  const { mutate: handleChatMutation, isPending } = useMutation({
+    mutationFn: ({
+      message,
+      isThinking,
+    }: {
+      message: string;
+      isThinking: boolean;
+    }) => handleChat(message, isThinking),
+    onSuccess: (response) => {
+      let parts: {
+        text: string;
+        thought?: boolean;
+      }[] = [];
+
+      console.log(response);
+
+      if (response?.thought !== "") {
+        parts = [
+          ...parts,
+          { thought: true, text: response?.thought || "Terjadi kesalahan" },
+        ];
+      }
+      const botMessage = {
+        role: "model",
+        parts: [...parts, { text: response?.answer || "Terjadi kesalahan" }],
+      };
+      setConversation((prev) => [...prev, botMessage]);
+    },
+    onError: (error) => {
+      const botMessage = {
+        role: "model",
+        parts: [{ text: "Terjadi kesalahan: " + error.message }],
+      };
+      setConversation((prev) => [...prev, botMessage]);
+    },
+  });
+
+  function sendMessage(message: string) {
+    const newMessage = {
       role: "user",
-      parts: [
-        {
-          text: "Hello",
-        },
-      ],
-    },
-    {
-      role: "model",
-      parts: [
-        {
-          text: "Hello, ow can i help you?",
-        },
-      ],
-    },
-  ]);
+      parts: [{ text: message }],
+    };
+    setConversation((prev) => [...prev, newMessage]);
+    handleChatMutation({ message, isThinking });
+  }
+
+  useEffect(() => {
+    if (chatRef.current) {
+      chatRef.current?.scrollTo({
+        top: chatRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [conversation]);
 
   return (
     <Drawer direction="right" modal={false}>
-      <DrawerTrigger className="fixed buttom-4 right-4" asChild>
-        <Button
-          className="size-14 rounded-full"
-          size="lg"
-          variant="outline"
-          // onClick={async () => {
-          //   const result = await handleChat();
-          //   console.log(result);
-          // }}
-        >
+      <DrawerTrigger className="fixed bottom-4 right-4" asChild>
+        <Button className="size-14 rounded-full" size="lg" variant="outline">
           <BotIcon className="size-6" />
         </Button>
       </DrawerTrigger>
@@ -66,7 +109,7 @@ export default function ChatBotDrawer() {
               AI Financial Advisor
             </DrawerTitle>
             <DrawerDescription>
-              Get personilized financial advice.
+              Get personalized financial advice.
             </DrawerDescription>
           </div>
           <DrawerClose asChild>
@@ -75,9 +118,12 @@ export default function ChatBotDrawer() {
             </Button>
           </DrawerClose>
         </DrawerHeader>
-        <div className="no-scrollbar overflow-y-auto px-4 h-full">
+        <div className="h-full px-4 overflow-y-auto no-scrollbar">
           {conversation.length > 0 ? (
-            <div className="flex flex-col h-full overflow-x-hidden no-scrollbar overflow-y-auto gap-8">
+            <div
+              ref={chatRef}
+              className="flex flex-col h-full overflow-x-hidden no-scrollbar overflow-y-auto gap-8"
+            >
               {conversation.map((message, index) => (
                 <div
                   key={`coversation-${index}`}
@@ -98,10 +144,41 @@ export default function ChatBotDrawer() {
                         AI Advisor
                       </p>
                     )}
-                    {message.parts[0].text}
+                    {message.role === "model" ? (
+                      <div className="response-ai">
+                        {message.parts.map((part, indexPart) => (
+                          <div key={`response-ai-${index}${indexPart}`}>
+                            {part.thought ? (
+                              <Collapsible>
+                                <CollapsibleTrigger asChild>
+                                  <Button variant="ghost">
+                                    Tampilkan alur berpikir
+                                    <ChevronDownIcon />
+                                  </Button>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <div className="border-l pl-2 ml-4">
+                                    <Markdown>{part.text}</Markdown>
+                                  </div>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            ) : (
+                              <Markdown>{part.text}</Markdown>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      message.parts[0].text
+                    )}
                   </div>
                 </div>
               ))}
+              {isPending && (
+                <div className="flex items-center animate-pulse">
+                  <EllipsisIcon className="size-8 text-primary/50" />
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full">
@@ -111,7 +188,7 @@ export default function ChatBotDrawer() {
           )}
         </div>
         <DrawerFooter>
-          <ChatbotTextarea />
+          <ChatbotTextarea isThinking={isThinking} setIsThinking={setIsThinking} sendMessage={sendMessage} />
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
