@@ -37,7 +37,7 @@ const formSchema = z.object({
   }),
   category: z.string().min(1, "Category is required"),
   date: z.string().min(1, "Date is required"),
-  description: z.string().min(1, "Date is required"),
+  description: z.string().min(1, "Description is required"),
 });
 
 export default function CreateTrasactionCard({

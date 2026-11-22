@@ -1,15 +1,17 @@
 "use server";
 
-import { ENVIRONMENT } from "@/config/environment";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { Conversation } from "@/app/types/ai";
+import { createAI } from "./instance";
+import z from "zod";
 
-const ai = new GoogleGenAI({ apiKey: ENVIRONMENT.GoogleGenAIKey });
-
-export async function handleChat(message: string, isThinking: boolean) {
-  console.log(isThinking)
+export async function handleChat(
+  conversation: Conversation[],
+  isThinking: boolean,
+) {
+  const ai = createAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: message,
+    model: "gemini-3.5-flash",
+    contents: [...conversation],
     config: {
       thinkingConfig: {
         includeThoughts: isThinking,
@@ -44,4 +46,174 @@ export async function handleChat(message: string, isThinking: boolean) {
   console.log(result);
 
   return result;
+}
+
+export async function* handleChatStreaming(
+  conversation: Conversation[],
+  isThinking: boolean,
+) {
+  const ai = createAI();
+  const response = await ai.models.generateContentStream({
+    model: "gemini-3.5-flash",
+    contents: [...conversation],
+    config: {
+      thinkingConfig: {
+        includeThoughts: isThinking,
+        // thinkingLevel: isThinking ? ThinkingLevel.HIGH : ThinkingLevel.MINIMAL,
+        // thinkingBudget: isThinking ? -1 : 0,
+      },
+      systemInstruction: `
+      [Role]
+      Kamu bernama Fina yang merupakan seorang financial advisor, yang punya gaya bahasa sopan dan suka memberikan analogi sehari-hari agar penjelasan rumit menjadi lebih mudah dipahami.
+      
+      [Instruction]
+      - Jawab semua pertanyaan yang sesuai dengan bidang finance.
+
+      [Context]
+      Kamu bekerja untuk Kantongku, platform financial tracker yang target utamanya adalah Gen Z di Indonesia (usia 18-30 tahun) dengan penghasilan UMR (Rp 3.000.000 - Rp 6.000.000). 
+      Kebanyakan dari mereka mengalami FOMO, gaya hidup konsumtif, dan tidak memikirkan dana darurat maupun investasi.
+
+      [Input]
+      Pengguna akan menanyakan seputar menabung, investasi, pengelolaan utang, dana darurat atau pertanyaan lain seputar finance.
+
+      [Constraints]
+      - Jika memberikan saran diakhir jawaban tulis kalimat disclaimer "Saran ini bersifat edukuasi, keputusan ada di tangan anda.
+      - Jawab dengan bahasa Indonesia yang santai, sopan namun tetep profesional.
+      - Jangan membuat asumsi data dari pengguna jika mereka tidak menyebutkannya.
+      - Jika ada pertanyaan diluar konteks terkait finance, maka anda jawab bahwa anda hanya bisa menjawab pertanyaan terkait finance.
+
+      [Workflow Steps]
+      - Langkah 1 (Information Extraction): Identifikasi pengguna, tanyakan usia, penghasilan/budget, tujuan keuangannya.
+      - Langkah 2 (Thought): Analisis masalah utama pengguan dan data apa yang kurang.
+      - Langkah 3 (Action): Tentukan formula yang harus dijalankan.
+      - Langkah 4 (Evaluation): Periksa kembai hasil dari action.
+      - Langkah 5 (Response Generation): Keluarkan jawaban akhir ke pengguna.
+
+      [Response Format]
+      Struktur jawaban kamu harus seperti ini:
+      1. Analisis singkat masalah pengguna dalam satu kalimat.
+      2. Langkah solusi menggunakan bullet points apabila jawaban anda tidak bersifat sistematis atau list number apabila jawaban anda bersifar sistematis.
+
+      [Example]
+      Ikuti gaya jawaban dari contoh berikut:
+      [Contoh 1]
+      User: "Gaji saya 5 juta, bagaimana cara nabung dana darurat"
+      Model: "Mengumpulkan dana darurat dengan gaji 5 juta itu sangat mungkin asalkan konsisten.
+      Berikut langkah awalnya:
+      - Sisihkan minimal 10% di awal bulan.
+      - Simpan di instrumen rendah resiko seperti RDPU.
+
+      [Contoh 2]
+      User: "Mending bayar utang paylater atau mulai investasi"
+      Model: "Prioritas utama yang sehat adalah melunasi utang konsumtif dengan bunga tinggi.
+      Ini saran untukmu:
+      - Stop penggunaan paylater untuk sementara waktu.
+      - Dana berlebih pakai untuk melunasi paylater tersebut karena bunga jauh lebih tinggi dari imbal hasil investasi.
+      - Setelah lunas baru mulai rutin investasi.
+      `,
+      // sampling params
+      temperature: 0.2,
+      topK: 5,
+      topP: 0.1,
+
+      // output control
+      maxOutputTokens: 2048,
+      stopSequences: ["\n\n\n", "###", "User:", "Pengguna:"],
+
+      // repetition penalties
+      // presencePenalty: 1.5,
+      // frequencyPenalty: 1.5,
+    },
+  });
+
+  if (isThinking) {
+    for await (const chunk of response) {
+      const parts = chunk.candidates?.[0]?.content?.parts;
+      if (parts) {
+        for (const part of parts) {
+          if (!part.text) {
+            continue;
+          } else if (part.thought) {
+            yield `[thought]${part.text}`;
+          } else {
+            yield part.text;
+          }
+        }
+      }
+    }
+  } else {
+    for await (const chunk of response) {
+      if (chunk.text) {
+        yield chunk.text;
+      }
+    }
+  }
+}
+
+const transactionSchema = z.object({
+  amount: z.number().default(0).describe("Transaction nominal"),
+  type: z.enum(["income", "expense"]).describe("Type of transaction"),
+  category: z
+    .enum([
+      "Food & Drink",
+      "Transportation",
+      "Entertaiment",
+      "Shopping",
+      "Housing",
+      "Salary",
+      "Education",
+      "Other",
+    ])
+    .describe("Category of transaction"),
+  date: z.string().describe("The date of transaction in YYYY-MM-DD"),
+  description: z.string().describe("Short text for describing transaction"),
+});
+
+export async function handleWizardInput(message: string) {
+  const contents = `
+  <role>    
+    You are an AI Wizard Finance asistant, who can extract transaction details from text.
+  </role>
+  
+  <instruction>
+    Extract the transaction details from the following text and return it as a structure JSON object.
+    The JSON object must have exactly these fields:
+    - "amount": a number representing the cost (positive). Use 0 if not provided.
+    - "type": type of transaction, either 'income' or 'expense'.
+    - "category": choose the most appropriate category from this exact list:
+                  'Food & Drink','Shopping','Housing','Transportation','Entertainment','Salary','Education', 'Other'.
+    - "description": a short string describing the transaction, first letter capitalized.
+    - "date": date of transaction in YYYY-MM-DD format.
+              Assume the current date if relative terms like 'today' or 'just now'. If not define use current date.
+  </instruction>
+
+  <context>
+    Current Date: ${new Date().toISOString()}
+  </context>
+
+  <input>
+    Text to extract: ${message}
+  </input>
+
+  <outputFormat>
+    Respond with only the raw JSON object, no markdown blocks, no text before or after.
+  </outputFormat>
+  `;
+
+  const ai = createAI();
+  const response = await ai.models.generateContent({
+    model: "gemini-3.5-flash",
+    contents,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: z.toJSONSchema(transactionSchema),
+    },
+  });
+
+  const transaction = transactionSchema.parse(JSON.parse(`${response.text}`));
+  if (transaction.amount <= 0) {
+    throw new Error("Cannot create transaction with invalid amount");
+  }
+
+  return transaction;
 }
