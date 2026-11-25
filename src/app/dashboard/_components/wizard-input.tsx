@@ -6,6 +6,7 @@ import { Field } from "@/components/ui/field";
 import { Toggle } from "@/components/ui/toggle";
 import { createTransaction } from "@/features/transaction/action";
 import { handleWizardInput } from "@/features/transaction/ai/chat";
+import { generateEmbedding } from "@/features/transaction/ai/embedding";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -25,7 +26,7 @@ export default function WizardInput({ refetch }: { refetch: () => void }) {
     defaultValues: {
       message: "",
     },
-  });
+});
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (message: string) => {
@@ -37,15 +38,17 @@ export default function WizardInput({ refetch }: { refetch: () => void }) {
 
       return createTransaction(aiResponse);
     },
-    onSuccess: (response) => {
+    onSuccess: () => {
       toast.success("Transaction created successfully!");
       refetch();
       form.reset();
     },
     onError: (error) => {
-      toast.error(error instanceof Error)
-        ? error.message
-        : "Failed to process your request";
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to process your request",
+      );
     },
   });
 
